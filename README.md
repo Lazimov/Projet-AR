@@ -17,7 +17,7 @@ Une application web en réalité augmentée qui guide un technicien pas à pas p
 
 Le projet est réalisé par une équipe de 4 étudiants avec une répartition claire des responsabilités :
 
-### Yannis — Lead AR & Tracking
+### Yannis.L — Lead AR & Tracking
 Responsable de la partie technique AR et de l'architecture de la scène 3D.
 - Setup du projet A-Frame + AR.js
 - Configuration du tracking par marqueurs
@@ -32,14 +32,14 @@ Responsable des interactions utilisateur et de la machine à états du parcours.
 - Gestion de l'ordre des étapes de maintenance
 - Validation des actions du technicien
 
-### Mickael — Scène 3D & Animations
+### Mikhael — Scène 3D & Animations
 Responsable de la modélisation des composants et des effets visuels.
 - Création des composants 3D du serveur (alimentation, ventilateurs, RAM, CPU, etc.)
 - Animations de mise en valeur (highlight, pulse)
 - Animations de démontage (élévation, rotation, disparition)
 - Effets visuels de feedback
 
-### Yaniss — UI, Score & Documentation
+### Yaniss.Z — UI, Score & Documentation
 Responsable de l'interface utilisateur, du système de score et de la documentation.
 - Système de **score et barre de progression**
 - Interface overlay (header, panneau d'instructions, boutons)
@@ -64,7 +64,7 @@ Le projet est développé sur la semaine avec des points de synchronisation quot
 
 ---
 
-**Équipe** : Yannis, Alexandre, Mickael, Yaniss
+**Équipe** : Yannis.L , Alexandre, Mikhael, Yaniss.Z
 **Formation** : IPSSI — Prépa Informatique & Développement
 **Parcours** : AR+
 **Client** : ImmaTech
