@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="description" content="ImmaTech AR+ — Assistant de diagnostic tableau électrique en réalité augmentée">
+  <title>ImmaTech AR+ — Diagnostic Tableau Électrique</title>
+
+  <!-- Styles interface utilisateur -->
+  <link rel="stylesheet" href="css/ui.css">
+
+  <!-- ============================================================
+       A-FRAME 1.5.0 (CDN officiel)
+       Framework 3D / WebXR
+       ============================================================ -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+  <!-- ============================================================
+       AR.JS 3.4.5 — Tracking de marqueur pour A-Frame
+       Doit être chargé APRÈS A-Frame
+       ============================================================ -->
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
+</head>
+<body>
+
+  <!-- ============================================================
+       INTERFACE UTILISATEUR (overlay HTML au-dessus de la scène AR)
+       ============================================================ -->
+
+  <!-- HEADER : logo + score + timer -->
+  <header id="header-ui" class="header-ui">
+    <div class="logo">⚡ ImmaTech AR+</div>
+    <div class="header-right">
+      <div class="score-display">
+        <span class="score-label">Score</span>
+        <span id="score-value" class="score-value">0</span>
+      </div>
+      <div class="timer-display">
+        <span class="timer-label">Temps</span>
+        <span id="timer-value" class="timer-value">00:00</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- BARRE DE PROGRESSION : 5 segments, un par étape -->
+  <nav id="progress-bar" class="progress-bar" aria-label="Progression du diagnostic">
+    <div class="progress-step" data-step="1">
+      <div class="step-dot"></div>
+      <span class="step-label">1</span>
+    </div>
+    <div class="progress-connector"></div>
+    <div class="progress-step" data-step="2">
+      <div class="step-dot"></div>
+      <span class="step-label">2</span>
+    </div>
+    <div class="progress-connector"></div>
+    <div class="progress-step" data-step="3">
+      <div class="step-dot"></div>
+      <span class="step-label">3</span>
+    </div>
+    <div class="progress-connector"></div>
+    <div class="progress-step" data-step="4">
+      <div class="step-dot"></div>
+      <span class="step-label">4</span>
+    </div>
+    <div class="progress-connector"></div>
+    <div class="progress-step" data-step="5">
+      <div class="step-dot"></div>
+      <span class="step-label">5</span>
+    </div>
+  </nav>
+
+  <!-- PANNEAU D'INSTRUCTIONS : texte de l'étape active -->
+  <div id="instructions-panel" class="instructions-panel" role="status" aria-live="polite">
+    <div class="instructions-step-counter">
+      <span id="step-counter">Étape 1/5</span>
+    </div>
+    <div class="instructions-text">
+      <span id="instruction-text">Pointez la caméra vers le marqueur Hiro pour démarrer</span>
+    </div>
+  </div>
+
+  <!-- BOUTON RÉINITIALISER -->
+  <button id="btn-reset" class="btn-reset" onclick="ImmaTechScore.reset()">
+    ↺ Réinitialiser
+  </button>
+
+  <!-- FLASH D'ERREUR global (superposition rouge brève) -->
+  <div id="error-flash" class="error-flash" aria-hidden="true"></div>
+
+
+  <!-- ============================================================
+       MODAL — FICHE TECHNIQUE COMPOSANT
+       Apparaît au tap sur un composant 3D
+       ============================================================ -->
+  <div id="modal-fiche" class="modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="modal-titre">
+    <div class="modal-card">
+
+      <!-- En-tête : nom + badge état -->
+      <div class="modal-header">
+        <h2 id="modal-titre" class="modal-titre">Composant</h2>
+        <span id="modal-badge" class="modal-badge">Normal</span>
+      </div>
+
+      <!-- Corps : description + rôle + résultat de test -->
+      <div class="modal-body">
+        <div class="modal-info-row">
+          <span class="modal-info-label">Description</span>
+          <p id="modal-description" class="modal-info-value"></p>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-info-label">Rôle dans le tableau</span>
+          <p id="modal-role" class="modal-info-value"></p>
+        </div>
+        <!-- Zone résultat du test (cachée par défaut) -->
+        <div id="modal-resultat" class="modal-resultat" style="display:none;" aria-live="polite"></div>
+      </div>
+
+      <!-- Pied : actions disponibles -->
+      <div class="modal-footer">
+        <button
+          id="btn-tester"
+          class="btn btn-primary"
+          onclick="ImmaTechInteractions.actionTester()"
+        >⚡ Tester</button>
+        <button
+          id="btn-inspecter"
+          class="btn btn-secondary"
+          onclick="ImmaTechInteractions.actionInspecter()"
+        >🔍 Inspecter</button>
+        <button
+          class="btn btn-ghost"
+          onclick="ImmaTechInteractions.fermerModal()"
+        >✕ Fermer</button>
+      </div>
+
+    </div>
+  </div><!-- fin modal-fiche -->
+
+
+  <!-- ============================================================
+       MODAL — ÉCRAN DE FIN
+       Affiché quand toutes les étapes sont validées
+       ============================================================ -->
+  <div id="modal-fin" class="modal-overlay" style="display:none;" role="dialog" aria-modal="true">
+    <div class="modal-card modal-fin-card">
+
+      <div class="modal-fin-header">
+        <div class="modal-fin-icon">✅</div>
+        <h2 class="modal-fin-titre">Diagnostic terminé !</h2>
+        <p class="modal-fin-sous-titre">Tableau électrique vérifié avec succès</p>
+      </div>
+
+      <div class="modal-fin-stats">
+        <div class="stat-card">
+          <span class="stat-label">Score final</span>
+          <span id="fin-score" class="stat-value stat-primary">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Temps</span>
+          <span id="fin-temps" class="stat-value">00:00</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Erreurs</span>
+          <span id="fin-erreurs" class="stat-value">0</span>
+        </div>
+        <div class="stat-card stat-card-best">
+          <span class="stat-label">Meilleur score (tous temps)</span>
+          <span id="fin-best" class="stat-value stat-best">0</span>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" onclick="ImmaTechScore.reset()">
+        ↺ Recommencer
+      </button>
+
+    </div>
+  </div><!-- fin modal-fin -->
+
+
+  <!-- ============================================================
+       SCÈNE A-FRAME + AR.JS
+       La caméra est automatiquement initialisée par AR.js
+       ============================================================ -->
+  <a-scene
+    embedded
+    arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+    renderer="logarithmicDepthBuffer: true; antialias: true;"
+    vr-mode-ui="enabled: false"
+    loading-screen="dotsColor: #8b5cf6; backgroundColor: #0a0a0f"
+  >
+
+    <!-- ============================================================
+         MARQUEUR HIRO (preset par défaut AR.js, pas de fichier custom)
+         Tout le contenu 3D est enfant de ce marqueur.
+         ============================================================ -->
+    <a-marker preset="hiro" id="hiro-marker">
+
+      <!-- Conteneur principal du tableau électrique
+           rotation="-90 0 0" : pose le tableau à PLAT sur le marqueur
+             (la face avant pointe vers le haut → visible en regardant d'en dessus)
+           position="0 0.02 0" : légèrement au-dessus de la surface du marqueur
+           scale="0.2 0.2 0.2" : ajuster selon la taille d'impression du marqueur
+           NOTE: si tu modifies scale, mettre à jour aussi sceneAppear() dans animations.js -->
+      <a-entity
+        id="tableau-scene"
+        position="0 0.02 0"
+        rotation="-90 0 0"
+        scale="0.2 0.2 0.2"
+      >
+
+        <!-- ================================================================
+             INFRASTRUCTURE DU TABLEAU — non interactable
+             ================================================================ -->
+
+        <!-- Boîtier principal blanc cassé -->
+        <a-box position="0 0 0" width="4" height="3" depth="0.3" color="#e8e4d8"></a-box>
+        <!-- Cadre intérieur gris clair -->
+        <a-box position="0 0 0.16" width="3.7" height="2.7" depth="0.02" color="#d4d0c8"></a-box>
+
+        <!-- Rails DIN (rangée haute) -->
+        <a-box position="0 0.62 0.2"  width="3.6" height="0.14" depth="0.18" color="#9ca3af"></a-box>
+        <a-box position="0 0.62 0.3"  width="3.6" height="0.05" depth="0.04" color="#6b7280"></a-box>
+        <!-- Rails DIN (rangée basse) -->
+        <a-box position="0 -0.42 0.2" width="3.6" height="0.14" depth="0.18" color="#9ca3af"></a-box>
+        <a-box position="0 -0.42 0.3" width="3.6" height="0.05" depth="0.04" color="#6b7280"></a-box>
+
+        <!-- Plaque d'identification -->
+        <a-box  position="0.85 0.45 0.19" width="1.3" height="0.5" depth="0.02" color="#f8fafc"></a-box>
+        <a-text value="TABLEAU\nÉLECTRIQUE" position="0.85 0.45 0.21" align="center" color="#334155" width="1.6"></a-text>
+        <a-text value="NFC 15-100"          position="0.85 0.22 0.21" align="center" color="#64748b" width="1.1"></a-text>
+
+        <!-- Bornier de terre -->
+        <a-box  position="-1.4 -1.1 0.28" width="0.7" height="0.28" depth="0.28" color="#65a30d"></a-box>
+        <a-text value="PE" position="-1.4 -1.1 0.44" align="center" color="#f0fdf4" width="0.6"></a-text>
+        <a-box  position="-1.4 -0.78 0.28" width="0.08" height="0.5" depth="0.06" color="#84cc16"></a-box>
+
+        <!-- Câblage décoratif (fils entrants) -->
+        <a-box position="-1.0  -1.35 0.15" width="0.06" height="0.35" depth="0.06" color="#dc2626"></a-box>
+        <a-box position="-0.85 -1.35 0.15" width="0.06" height="0.35" depth="0.06" color="#1d4ed8"></a-box>
+        <a-box position="-0.7  -1.35 0.15" width="0.06" height="0.35" depth="0.06" color="#65a30d"></a-box>
+
+
+        <!-- ================================================================
+             RÈGLE IMPORTANTE — STRUCTURE DES COMPOSANTS INTERACTABLES v2
+             ================================================================
+             Chaque composant est dans un <a-entity data-type="groupe-composant">
+             L'a-box interactable (id="comp-*") est SEULE dans le groupe (0 enfant).
+             Les détails décoratifs sont des SIBLINGS de l'a-box, pas ses enfants.
+
+             Pourquoi ? A-Frame teste les enfants de chaque entité .interactable
+             de façon récursive. Si une boîte décorative enfant est frappée
+             en premier par le rayon, son entité (sans clickable-component)
+             absorbe l'événement → plus de clic sur le parent.
+             En faisant des details des siblings, seule l'a-box.interactable
+             est dans le set récursif : clic garanti.
+
+             playInspection() tourne el.parentNode (le groupe) pour inclure
+             les détails décoratifs dans la rotation d'inspection.
+             ================================================================ -->
+
+
+        <!-- ================================================================
+             PEIGNE D'ALIMENTATION
+             Groupe à la même position que la boîte (position sur le groupe).
+             ================================================================ -->
+        <a-entity data-type="groupe-composant" position="0 0.88 0.27">
+          <!-- Boîte interactable — aucun enfant -->
+          <a-box
+            id="comp-peigne"
+            class="interactable"
+            data-nom="Peigne d'alimentation"
+            data-description="Le peigne d'alimentation est un conducteur rigide en forme de peigne qui relie les pôles phase de tous les disjoncteurs. Il permet un câblage rapide et sécurisé sans fils dénudés."
+            data-role="Distribue la phase électrique à tous les disjoncteurs depuis l'interrupteur différentiel, sans fils individuels multiples."
+            data-defectueux="false"
+            data-couleur-origine="#b45309"
+            position="0 0 0"
+            width="3.4" height="0.13" depth="0.13"
+            color="#b45309"
+            clickable-component testable-component inspect-component
+          ></a-box>
+          <!-- Détails décoratifs (siblings, pas enfants) -->
+          <a-box position="-1.4 0 0.1" width="0.08" height="0.13" depth="0.04" color="#78350f"></a-box>
+          <a-box position=" 0   0 0.1" width="0.08" height="0.13" depth="0.04" color="#78350f"></a-box>
+          <a-box position=" 1.4 0 0.1" width="0.08" height="0.13" depth="0.04" color="#78350f"></a-box>
+        </a-entity>
+        <!-- Label flottant peigne (z=0.65 → flotte haut au-dessus du tableau plat) -->
+        <a-text id="label-peigne" value="Peigne d'alim." position="0 0.88 0.65" align="center" color="#fbbf24" width="1.6" visible="false"></a-text>
+
+
+        <!-- ================================================================
+             DISJONCTEUR GÉNÉRAL — rouge foncé, haut gauche
+             ================================================================ -->
+        <a-entity data-type="groupe-composant" position="-1.4 0.45 0.3">
+          <a-box
+            id="comp-disjoncteur-general"
+            class="interactable"
+            data-nom="Disjoncteur général"
+            data-description="Le disjoncteur général permet de couper ou rétablir l'alimentation de toute l'installation. Il protège les câbles contre les surcharges et courts-circuits."
+            data-role="Coupure générale de l'installation. Position normale : ON (levier haut). Calibre typique : 60–90A."
+            data-defectueux="false"
+            data-couleur-origine="#7f1d1d"
+            position="0 0 0"
+            width="0.6" height="1.0" depth="0.4"
+            color="#7f1d1d"
+            clickable-component testable-component inspect-component
+          ></a-box>
+          <!-- Détails : levier ON (vert, haut) + voyant + étiquette -->
+          <a-box  position="0  0.18 0.22" width="0.22" height="0.38" depth="0.06" color="#15803d"></a-box>
+          <a-box  position="0 -0.28 0.22" width="0.12" height="0.08" depth="0.04" color="#22c55e"></a-box>
+          <a-text value="GEN" position="0 0.42 0.22" align="center" color="#fef2f2" width="0.9"></a-text>
+        </a-entity>
+        <a-text id="label-disjoncteur-general" value="Disj. Général" position="-1.4 0.45 0.65" align="center" color="#f1f5f9" width="1.4" visible="false"></a-text>
+
+
+        <!-- ================================================================
+             INTERRUPTEUR DIFFÉRENTIEL 30mA — vert foncé
+             ================================================================ -->
+        <a-entity data-type="groupe-composant" position="-0.6 0.45 0.3">
+          <a-box
+            id="comp-interrupteur-differentiel"
+            class="interactable"
+            data-nom="Interrupteur différentiel 30mA"
+            data-description="L'interrupteur différentiel 30mA mesure la différence entre courant entrant et sortant. Dès qu'une fuite dépasse 30mA, il déclenche en moins de 30ms pour protéger les personnes."
+            data-role="Protection des personnes contre l'électrocution. Un test mensuel via le bouton TEST est obligatoire (norme NFC 15-100)."
+            data-defectueux="false"
+            data-couleur-origine="#14532d"
+            position="0 0 0"
+            width="0.85" height="1.0" depth="0.4"
+            color="#14532d"
+            clickable-component testable-component inspect-component
+          ></a-box>
+          <!-- Détails : levier ON + bouton TEST jaune + voyant + étiquette -->
+          <a-box  position="0  0.18 0.22" width="0.22" height="0.38" depth="0.06" color="#15803d"></a-box>
+          <a-box  position="0 -0.15 0.23" width="0.32" height="0.18" depth="0.07" color="#ca8a04"></a-box>
+          <a-text value="TEST" position="0 -0.15 0.27" align="center" color="#fef9c3" width="0.7"></a-text>
+          <a-box  position="0 -0.35 0.22" width="0.12" height="0.08" depth="0.04" color="#22c55e"></a-box>
+          <a-text value="30mA" position="0  0.42 0.22" align="center" color="#f0fdf4" width="0.9"></a-text>
+        </a-entity>
+        <a-text id="label-interrupteur-differentiel" value="Inter. Diff. 30mA" position="-0.6 0.45 0.65" align="center" color="#f1f5f9" width="1.5" visible="false"></a-text>
+
+
+        <!-- ================================================================
+             DISJONCTEUR DIVISIONNAIRE 1 — Cuisine 20A (FONCTIONNEL)
+             ================================================================ -->
+        <a-entity data-type="groupe-composant" position="-0.2 -0.55 0.3">
+          <a-box
+            id="comp-disjoncteur-1"
+            class="interactable"
+            data-nom="Disj. Cuisine 20A"
+            data-description="Disjoncteur divisionnaire 20A protégeant le circuit cuisine. Calibré pour les appareils électroménagers à forte consommation (four, lave-vaisselle, induction)."
+            data-role="Protection du circuit cuisine contre surcharges et courts-circuits. Position normale : ON. Calibre 20A selon NFC 15-100."
+            data-defectueux="false"
+            data-couleur-origine="#1e3a8a"
+            position="0 0 0"
+            width="0.42" height="1.0" depth="0.4"
+            color="#1e3a8a"
+            clickable-component testable-component inspect-component
+          ></a-box>
+          <!-- Levier ON (vert, haut) + étiquette -->
+          <a-box  position="0 0.18 0.22" width="0.16" height="0.32" depth="0.06" color="#15803d"></a-box>
+          <a-text value="Cui.&#10;20A" position="0 0.40 0.22" align="center" color="#eff6ff" width="0.7"></a-text>
+        </a-entity>
+        <a-text id="label-disjoncteur-1" value="Cuisine 20A" position="-0.2 -0.55 0.65" align="center" color="#f1f5f9" width="1.2" visible="false"></a-text>
+
+
+        <!-- ================================================================
+             DISJONCTEUR DIVISIONNAIRE 2 — Séjour 16A (FONCTIONNEL)
+             ================================================================ -->
+        <a-entity data-type="groupe-composant" position="0.35 -0.55 0.3">
+          <a-box
+            id="comp-disjoncteur-2"
+            class="interactable"
+            data-nom="Disj. Séjour 16A"
+            data-description="Disjoncteur divisionnaire 16A protégeant le circuit séjour/salon. Dimensionné pour éclairages, prises standard et appareils audiovisuels."
+            data-role="Protection du circuit séjour. Position normale : ON. Calibre 16A standard."
+            data-defectueux="false"
+            data-couleur-origine="#1e3a8a"
+            position="0 0 0"
+            width="0.42" height="1.0" depth="0.4"
+            color="#1e3a8a"
+            clickable-component testable-component inspect-component
+          ></a-box>
+          <a-box  position="0 0.18 0.22" width="0.16" height="0.32" depth="0.06" color="#15803d"></a-box>
+          <a-text value="Sej.&#10;16A" position="0 0.40 0.22" align="center" color="#eff6ff" width="0.7"></a-text>
+        </a-entity>
+        <a-text id="label-disjoncteur-2" value="Séjour 16A" position="0.35 -0.55 0.65" align="center" color="#f1f5f9" width="1.2" visible="false"></a-text>
+
+
+        <!-- ================================================================
+             DISJONCTEUR DIVISIONNAIRE 3 — Chambre 16A (DÉFECTUEUX — a sauté)
+             C'est le composant à identifier et tester aux étapes 3 et 4.
+             Levier rouge en position basse pour indiquer le déclenchement.
+             ================================================================ -->
+        <a-entity data-type="groupe-composant" position="0.9 -0.55 0.3">
+          <a-box
+            id="comp-disjoncteur-3"
+            class="interactable"
+            data-nom="Disj. Chambre 16A"
+            data-description="Ce disjoncteur 16A a déclenché suite à une surcharge ou un court-circuit. Le levier est en position basse et le voyant est rouge. Il doit être testé avant tout réarmement."
+            data-role="ANOMALIE : disjoncteur déclenché. Identifier la cause (surcharge, court-circuit) avant réarmement. Ne pas rearmer sans diagnostic préalable."
+            data-defectueux="true"
+            data-couleur-origine="#1e3a8a"
+            position="0 0 0"
+            width="0.42" height="1.0" depth="0.4"
+            color="#1e3a8a"
+            clickable-component testable-component inspect-component
+          ></a-box>
+          <!-- Levier OFF (rouge, BAS) + voyant rouge + indicateur défaut orange -->
+          <a-box  position="0  -0.18 0.22" width="0.16" height="0.32" depth="0.06" color="#dc2626"></a-box>
+          <a-box  position="0  -0.38 0.22" width="0.12" height="0.08" depth="0.04" color="#ef4444"></a-box>
+          <a-text value="Cha.&#10;16A" position="0 0.40 0.22" align="center" color="#eff6ff" width="0.7"></a-text>
+          <a-box  position="0.14 0.12 0.23" width="0.09" height="0.09" depth="0.02" color="#f97316"></a-box>
+        </a-entity>
+        <a-text id="label-disjoncteur-3" value="⚠ Chambre 16A" position="0.9 -0.55 0.65" align="center" color="#fbbf24" width="1.3" visible="false"></a-text>
+
+
+        <!-- ================================================================
+             DISJONCTEUR DIVISIONNAIRE 4 — SDB 16A (FONCTIONNEL)
+             ================================================================ -->
+        <a-entity data-type="groupe-composant" position="1.45 -0.55 0.3">
+          <a-box
+            id="comp-disjoncteur-4"
+            class="interactable"
+            data-nom="Disj. SDB 16A"
+            data-description="Disjoncteur divisionnaire 16A protégeant la salle de bain. Associé à un différentiel 30mA pour la protection en zone humide (norme NFC 15-100, volumes 2 et 3)."
+            data-role="Protection du circuit salle de bain. Position normale : ON. Exige un différentiel 30mA par la norme."
+            data-defectueux="false"
+            data-couleur-origine="#1e3a8a"
+            position="0 0 0"
+            width="0.42" height="1.0" depth="0.4"
+            color="#1e3a8a"
+            clickable-component testable-component inspect-component
+          ></a-box>
+          <a-box  position="0 0.18 0.22" width="0.16" height="0.32" depth="0.06" color="#15803d"></a-box>
+          <a-text value="SDB&#10;16A" position="0 0.40 0.22" align="center" color="#eff6ff" width="0.7"></a-text>
+        </a-entity>
+        <a-text id="label-disjoncteur-4" value="SDB 16A" position="1.45 -0.55 0.65" align="center" color="#f1f5f9" width="1.2" visible="false"></a-text>
+
+
+      </a-entity><!-- fin #tableau-scene -->
+
+    </a-marker><!-- fin #hiro-marker -->
+
+    <!-- ============================================================
+         CAMÉRA AR — pas de cursor A-Frame.
+         Le raycasting est géré manuellement dans main.js via THREE.js
+         pour garantir des hitbox stables même après perte/reprise du
+         marqueur (updateMatrixWorld forcé avant chaque test).
+         ============================================================ -->
+    <a-entity camera></a-entity>
+
+  </a-scene><!-- fin a-scene -->
+
+
+  <!-- ============================================================
+       SCRIPTS JAVASCRIPT
+       Ordre important : animations → score → steps → interactions → main
+       Chaque module dépend de ceux chargés avant lui.
+       ============================================================ -->
+  <script src="js/animations.js"></script>
+  <script src="js/score.js"></script>
+  <script src="js/steps.js"></script>
+  <script src="js/interactions.js"></script>
+  <script src="js/main.js"></script>
+
+</body>
+</html>
